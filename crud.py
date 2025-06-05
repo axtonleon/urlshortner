@@ -3,6 +3,7 @@ import secrets
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
+import logging
 
 # Import ORM models, Pydantic schemas, and auth helpers
 import models, schemas, auth, security
@@ -43,6 +44,14 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
 
 # --- URL CRUD ---
 
+def get_user_urls(db: Session, owner_id: UUID) -> List[models.URL]:
+    """Get all URLs created by a specific user."""
+    try:
+        return db.query(models.URL).filter(models.URL.owner_id == owner_id).all()
+    except Exception as e:
+        logging.error(f"Database error in get_user_urls: {str(e)}")
+        raise
+
 def generate_random_key(length: int = 6) -> str:
     """Generates a unique random key (helper function)."""
     return secrets.token_urlsafe(length)
@@ -78,7 +87,11 @@ def create_db_url(db: Session, url: schemas.URLBase, owner_id: int) -> models.UR
 
 def get_db_url_by_key(db: Session, key: str) -> Optional[models.URL]:
     """Fetch a URL by its short key."""
-    return db.query(models.URL).filter(models.URL.key == key).first()
+    try:
+        return db.query(models.URL).filter(models.URL.key == key).first()
+    except Exception as e:
+        logging.error(f"Database error in get_db_url_by_key: {str(e)}")
+        raise
 
 def get_db_url_by_secret_key(db: Session, secret_key: str) -> Optional[models.URL]:
     """Fetch a URL by its secret key."""
@@ -115,10 +128,14 @@ def delete_db_url(db: Session, db_url: models.URL) -> models.URL:
 
 def get_and_increment_clicks(db: Session, key: str) -> Optional[models.URL]:
     """Fetch URL by key and increment clicks if found and active."""
-    db_url = get_db_url_by_key(db, key=key)
-    if db_url and db_url.is_active:
-        return update_db_clicks(db, db_url=db_url)
-    return None # Return None if not found or inactive
+    try:
+        db_url = get_db_url_by_key(db, key=key)
+        if db_url and db_url.is_active:
+            return update_db_clicks(db, db_url=db_url)
+        return None
+    except Exception as e:
+        logging.error(f"Database error in get_and_increment_clicks: {str(e)}")
+        raise
 
 def get_and_deactivate_url(db: Session, secret_key: str, owner_id: int) -> Optional[models.URL]:
     """Fetch URL by secret key, verify owner, and deactivate."""

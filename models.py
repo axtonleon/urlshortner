@@ -68,4 +68,4 @@ class URL(Base):
     owner = relationship("User", back_populates="urls")
 
     def __repr__(self):
-        return f"<URL(id={self.id}, key='{self.key}', target_url='{self.target_url}')>"
+        return f"<URL(id={self.id}, key='{self.key}', target_url='{self.target_url}', is_active={self.is_active})>"
