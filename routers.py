@@ -1,6 +1,6 @@
 # routers.py
 from fastapi import APIRouter, HTTPException, Depends, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
 from sqlalchemy.orm import Session # Import Session
@@ -11,6 +11,7 @@ import schemas, models, crud, auth
 from database import get_db # Import the DB session dependency
 from auth import ACCESS_TOKEN_EXPIRE_MINUTES # Import config
 import logging
+from qr_generator import generate_qr_code
 
 logging.basicConfig(level=logging.INFO)
 
@@ -213,5 +214,54 @@ async def delete_url_permanently(
         else:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
     return {"message": "URL deleted successfully"}
+
+@url_router.get("/qr/{short_key}", response_class=StreamingResponse)
+async def generate_url_qr_code(
+    short_key: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Generates a QR code for a short URL."""
+    logging.info(f"Generating QR code for short key: {short_key}")
+    
+    # Get the URL from the database
+    db_url = crud.get_db_url_by_key(db, key=short_key)
+    
+    if not db_url:
+        logging.warning(f"Short key not found: {short_key}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Short URL not found"
+        )
+    
+    if not db_url.is_active:
+        logging.warning(f"Attempted QR generation for deactivated URL: {short_key}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="URL is deactivated"
+        )
+    
+    # Generate the full URL for the QR code
+    base_url = str(request.base_url)
+    full_url = f"{base_url}s/{short_key}"
+    
+    try:
+        # Generate QR code
+        qr_image = generate_qr_code(full_url)
+        
+        # Return the QR code as a streaming response
+        return StreamingResponse(
+            qr_image,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": f"attachment; filename=qr_{short_key}.png"
+            }
+        )
+    except Exception as e:
+        logging.error(f"Error generating QR code: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error generating QR code"
+        )
 
 
